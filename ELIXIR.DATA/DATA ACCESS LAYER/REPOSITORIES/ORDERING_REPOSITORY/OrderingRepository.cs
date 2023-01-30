@@ -8,20 +8,24 @@ using ELIXIR.DATA.DTOs.TRANSFORMATION_DTOs;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+ using System.Data;
+ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+ using Microsoft.AspNetCore.SignalR;
 
-namespace ELIXIR.DATA.DATA_ACCESS_LAYER.REPOSITORIES.ORDERING_REPOSITORY
+ namespace ELIXIR.DATA.DATA_ACCESS_LAYER.REPOSITORIES.ORDERING_REPOSITORY
 {
     public class OrderingRepository : IOrdering
 
     {
 
        private readonly StoreContext _context;
-        public OrderingRepository(StoreContext context)
+       private readonly IHubCallerClients _clients;
+        public OrderingRepository(StoreContext context, IHubCallerClients clients)
         {
             _context = context;
+            _clients = clients;
         }
         public async Task<IReadOnlyList<OrderDto>> GetAllListofOrders(string farms)
         {
@@ -1136,23 +1140,33 @@ namespace ELIXIR.DATA.DATA_ACCESS_LAYER.REPOSITORIES.ORDERING_REPOSITORY
 
             return true;
         }
-        public async Task<bool> ApprovalForMoveOrder(MoveOrder moveorder)
+        public async Task<(bool sucess, string message)> ApprovalForMoveOrder(MoveOrder moveorder)
         {
-            var existing = await _context.MoveOrders.Where(x => x.OrderNo == moveorder.OrderNo)
-                                                    .ToListAsync();
-
-            if (existing == null)
-                return false;
-
-            foreach(var items in existing)
+            using (var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable))
             {
+                try         
+                {
+                    var existing = await _context.MoveOrders
+                        .Where(x => x.OrderNo == moveorder.OrderNo)
+                        .SingleOrDefaultAsync();
 
-                items.ApprovedDate = DateTime.Now;
-                items.ApproveDateTempo = DateTime.Now;
-                items.IsApprove = true;
+                    if (existing == null)
+                        return (false, "Order number not found");
+
+                    existing.ApproveDateTempo = DateTime.Now;
+                    existing.IsApprove = moveorder.IsApprove;
+
+                    await _context.SaveChangesAsync();
+                    transaction.Commit();
+                    await _clients.All.SendAsync("RefreshOrderList", existing);
+                    return (true, "Order updated successfully");
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    transaction.Rollback();
+                    return (false, "Item is locked by another user");
+                }
             }
-
-            return true;
 
         }
         public async Task<bool> RejectForMoveOrder(MoveOrder moveorder)
