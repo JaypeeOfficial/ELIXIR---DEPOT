@@ -21,12 +21,14 @@ using ELIXIR.DATA.DATA_ACCESS_LAYER.STORE_CONTEXT;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR;
 
 namespace ELIXIR.DATA.DATA_ACCESS_LAYER.MODELS
 {
     public class UnitOfWork : IUnitOfWork, IDisposable
     {
         private readonly StoreContext _context;
+        private readonly IHubCallerClients _clients;
 
         private readonly ILogger _logger;
 
@@ -110,7 +112,7 @@ namespace ELIXIR.DATA.DATA_ACCESS_LAYER.MODELS
             Preparation = new TransformationPreparationRepository(_context);
 
             //Ordering
-            Order = new OrderingRepository(_context);
+            Order = new OrderingRepository(_context, _clients);
 
 
             //Inventory

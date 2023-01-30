@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR;
+using ELIXIR.DATA.SERVICES;
 
 namespace ELIXIR.API.Controllers.ORDERING_CONTROLLER
 {
@@ -14,11 +16,12 @@ namespace ELIXIR.API.Controllers.ORDERING_CONTROLLER
     public class OrderingController : BaseApiController
     {
         private readonly IUnitOfWork _unitOfWork;
-        public OrderingController(IUnitOfWork unitofwork)
+        private readonly IHubContext<OderHub> _hubContext;
+        public OrderingController(IUnitOfWork unitofwork, IHubContext<OderHub> hubContext)
         {
 
             _unitOfWork = unitofwork;
-
+            _hubContext = hubContext;
         }
 
         [HttpGet]
@@ -468,11 +471,15 @@ namespace ELIXIR.API.Controllers.ORDERING_CONTROLLER
         [Route("ApproveListOfMoveOrder")]
         public async Task<IActionResult> ApproveListOfMoveOrder([FromBody] MoveOrder moveorder)
         {
+            (bool success, string messages) = await _unitOfWork.Order.ApprovalForMoveOrder(moveorder);
 
-            await _unitOfWork.Order.ApprovalForMoveOrder(moveorder);
+            if (!success)
+                return BadRequest(new { messages });
+
             await _unitOfWork.CompleteAsync();
+            await _hubContext.Clients.All.SendAsync("SendOrderApproval", moveorder);
 
-            return new JsonResult("Successfully approved list for move order!");
+            return new JsonResult(new { messages });
         }
 
         [HttpPut]
